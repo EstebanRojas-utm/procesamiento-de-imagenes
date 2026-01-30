@@ -1,6 +1,7 @@
 import cv2
 import os
 import funciones as fun
+import random
 
 # --- Configuración ---
 input_folder = 'imagenes'
@@ -43,19 +44,22 @@ for i in range(1, 11):
         cv2.imwrite(os.path.join(output_base, carpetas['flip'], filename), img_flip)
         
         # --- C. Rotación ---
-        # Ejemplo: Rotar 45 grados
-        img_rot = fun.rotacion(img_gris, angulo_grados=45)
+        # Ejemplo: Rotar theta grados
+        img_rot = fun.rotacion(img_gris, angulo_grados=random.randint(-360,360))
         cv2.imwrite(os.path.join(output_base, carpetas['rot'], filename), img_rot)
         
         # --- D. Traslación ---
-        # Ejemplo: Mover 50px a la derecha y 30px abajo
-        img_tras = fun.traslacion(img_gris, tx=50, ty=30)
+        # Ejemplo: Mover m px a la derecha y n px abajo
+        img_tras = fun.traslacion(img_gris, tx=random.randint(-200, 200), ty=random.randint(-200, 200))
         cv2.imwrite(os.path.join(output_base, carpetas['tras'], filename), img_tras)
         
         # --- E. Escalamiento ---
-        # Ejemplo: Zoom 1.5x en ambos ejes
-        img_esc = fun.escalamiento(img_gris, sx=1.5, sy=1.5)
+        
+        # Ejemplo: agrandar o reducir la imagen
+        factor_scale=random.uniform(0.5, 1.5)
+        img_esc = fun.escalamiento(img_gris, s=factor_scale)
         cv2.imwrite(os.path.join(output_base, carpetas['esc'], filename), img_esc)
+
 
     else:
         print(f"Error: No se encontró {input_path}")

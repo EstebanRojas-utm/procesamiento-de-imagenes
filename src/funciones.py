@@ -148,18 +148,18 @@ def traslacion(img, tx, ty):
     return new_img
 
 # --- 2d. Escalamiento ---
-def escalamiento(img, sx, sy):
-    """ Escala la imagen por factores sx, sy usando interpolación bilineal. """
+def escalamiento(img, s):
+    """ Escala la imagen por el factor s usando interpolación bilineal. """
     h, w = img.shape
-    new_h = int(h * sy)
-    new_w = int(w * sx)
+    new_h = int(h * s)
+    new_w = int(w * s)
     
     # 1. Crear grid de coordenadas de la imagen DESTINO
     y_grid, x_grid = np.meshgrid(np.arange(new_h), np.arange(new_w), indexing='ij')
     
     # 2. Mapeo Inverso: x_src = x_dst / sx
-    x_src = x_grid / sx
-    y_src = y_grid / sy
-    
+    x_src = x_grid / s
+    y_src = y_grid / s
+
     # 3. Interpolación
     return aplicar_interpolacion_bilineal(img, x_src, y_src)
