@@ -1,165 +1,198 @@
 import numpy as np
 import math
+import random
 
+# --- 1. Transformación a Escala de Grises ---
 def manual_rgb_a_gris(image):
     """
-    Convierte una imagen RGB a escala de grises
-    usando la fórmula de luminosidad.
-
+    Convierte RGB a Grises.
+    Fórmula de luminosidad (ITU-R 601-2): Y = 0.299*R + 0.587*G + 0.114*B
     """
-    # 1. Obtenemos las dimensiones
-    height, width, channels = image.shape
+    if len(image.shape) < 3: return image # Ya es gris
     
-    # 2. Creamos una matriz vacía de ceros para la imagen gris
-    # Usamos float32 para no perder precisión en la multiplicación
-    gray_image = np.zeros((height, width), dtype=np.float32)
+    # OpenCV carga en BGR, no en RGB
+    b = image[:, :, 0].astype(np.float32)
+    g = image[:, :, 1].astype(np.float32)
+    r = image[:, :, 2].astype(np.float32)
     
-    # NOTA: Las imágenes cargadas con OpenCV vienen en formato BGR (Blue, Green, Red)
-    # Las cargadas con Matplotlib vienen en RGB.
-    # Asumiremos formato BGR porque se usa cv2.imread()
+    gray = (0.299 * r) + (0.587 * g) + (0.114 * b)
+    return gray.astype(np.uint8)
+
+# --- Auxiliar: Interpolación Bilineal Vectorizada ---
+def interpolacion_bilineal_vectorizada(img, x_map, y_map):
+    """
+    Calcula la intensidad de los píxeles basándose en sus 4 vecinos.
+    x_map, y_map: Matrices con las coordenadas flotantes de origen.
+    """
+    h, w = img.shape
     
-    # Extraemos los canales individualmente (Slicing)
-    # B = Canal 0, G = Canal 1, R = Canal 2
-    b_channel = image[:, :, 0]
-    g_channel = image[:, :, 1]
-    r_channel = image[:, :, 2]
+    # Coordenadas enteras de los 4 vecinos
+    x0 = np.floor(x_map).astype(int)
+    y0 = np.floor(y_map).astype(int)
+    x1 = x0 + 1
+    y1 = y0 + 1
     
-    # 3. Aplicamos la ecuación pixel a pixel (Vectorizado con NumPy para eficiencia)
-    # Fórmula: Y = 0.299*R + 0.587*G + 0.114*B
-    gray_image = (0.299 * r_channel) + (0.587 * g_channel) + (0.114 * b_channel)
+    # Aseguramos que los índices estén dentro de la imagen
+    x0 = np.clip(x0, 0, w - 1)
+    x1 = np.clip(x1, 0, w - 1)
+    y0 = np.clip(y0, 0, h - 1)
+    y1 = np.clip(y1, 0, h - 1)
     
-    # 4. Convertimos de vuelta a enteros de 8 bits (0-255)
-    gray_image = gray_image.astype(np.uint8)
+    # Obtenemos los valores de los píxeles vecinos
+    Ia = img[y0, x0] # Top-left
+    Ib = img[y1, x0] # Bottom-left
+    Ic = img[y0, x1] # Top-right
+    Id = img[y1, x1] # Bottom-right
     
-    return gray_image
+    # Calculamos pesos (distancias)
+    # wa es el peso para Ia, que depende de la distancia al opuesto (Id)
+    wa = (x1 - x_map) * (y1 - y_map)
+    wb = (x1 - x_map) * (y_map - y0)
+    wc = (x_map - x0) * (y1 - y_map)
+    wd = (x_map - x0) * (y_map - y0)
+    
+    # Interpolación final
+    intensity = (wa * Ia + wb * Ib + wc * Ic + wd * Id)
+    
+    return intensity.astype(np.uint8)
 
 # --- 2a. Volteado (Flipping) ---
 def volteado(img, modo='h'):
-    """
-    Voltea la imagen.
-    modo 'h': Horizontal (espejo)
-    modo 'v': Vertical
-    """
-    h, w = img.shape
-    new_img = np.zeros_like(img)
-
     if modo == 'h':
-        # Matemáticamente: x' = width - 1 - x
-        new_img = img[:, ::-1]
+        return img[:, ::-1] # Invierte columnas
     elif modo == 'v':
-        # Matemáticamente: y' = height - 1 - y
-        new_img = img[::-1, :]
-    
-    return new_img
+        return img[::-1, :] # Invierte filas
+    return img
 
-# --- Función Auxiliar: Interpolación Bilineal ---
-def aplicar_interpolacion_bilineal(img, x_coords, y_coords):
-    """
-    Calcula la intensidad de los píxeles en coordenadas flotantes (x_coords, y_coords)
-    usando sus 4 vecinos más cercanos.
-    """
-    h, w = img.shape
-    
-    # Coordenadas enteras de los vecinos (Top-Left)
-    x0 = np.floor(x_coords).astype(int)
-    y0 = np.floor(y_coords).astype(int)
-    x1 = x0 + 1
-    y1 = y0 + 1
-
-    # Máscara para asegurar que estamos dentro de la imagen
-    mask = (x0 >= 0) & (x1 < w) & (y0 >= 0) & (y1 < h)
-    
-    # Inicializamos salida en negro
-    output = np.zeros_like(x_coords, dtype=np.float32)
-    
-    # Solo calculamos donde la máscara es válida para evitar errores de índice
-    x0_v, x1_v = x0[mask], x1[mask]
-    y0_v, y1_v = y0[mask], y1[mask]
-    
-    # Pesos (distancia a los enteros)
-    wa = (x1_v - x_coords[mask]) * (y1_v - y_coords[mask])
-    wb = (x1_v - x_coords[mask]) * (y_coords[mask] - y0_v)
-    wc = (x_coords[mask] - x0_v) * (y1_v - y_coords[mask])
-    wd = (x_coords[mask] - x0_v) * (y_coords[mask] - y0_v)
-    
-    # Fórmula de Interpolación Bilineal:
-    # I = wa*Ia + wb*Ib + wc*Ic + wd*Id
-    intensity = (wa * img[y0_v, x0_v] +
-                 wb * img[y1_v, x0_v] +
-                 wc * img[y0_v, x1_v] +
-                 wd * img[y1_v, x1_v])
-    
-    output[mask] = intensity
-    return output.astype(np.uint8)
-
-# --- 2b. Rotación ---
+# --- 2b. Rotación con Interpolación ---
 def rotacion(img, angulo_grados):
-    """ Rota la imagen usando interpolación bilineal (Mapeo Inverso). """
     h, w = img.shape
     theta = np.radians(angulo_grados)
-    cx, cy = w // 2, h // 2  # Centro de rotación
-
-    # 1. Crear grid de coordenadas de la imagen DESTINO
-    y_grid, x_grid = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
-
-    # 2. Aplicar Transformación Inversa para buscar en la imagen ORIGEN
-    # x_src = (x - cx)cos(-th) - (y - cy)sin(-th) + cx
-    # y_src = (x - cx)sin(-th) + (y - cy)cos(-th) + cy
-    # Nota: cos(-th) = cos(th), sin(-th) = -sin(th)
+    cx, cy = w // 2, h // 2 
     
-    x_shifted = x_grid - cx
-    y_shifted = y_grid - cy
+    # Creamos una malla de coordenadas de la imagen DESTINO
+    y_idxs, x_idxs = np.indices((h, w))
     
-    cos_t = np.cos(theta)
-    sin_t = np.sin(theta)
-
-    x_src = x_shifted * cos_t + y_shifted * sin_t + cx
-    y_src = -x_shifted * sin_t + y_shifted * cos_t + cy
-
-    # 3. Interpolación
-    return aplicar_interpolacion_bilineal(img, x_src, y_src)
+    # Centramos coordenadas
+    x_shifted = x_idxs - cx
+    y_shifted = y_idxs - cy
+    
+    # Mapeo Inverso: Para hallar qué pixel de origen va en (x,y) destino,
+    # rotamos por -theta.
+    cos_t = np.cos(-theta)
+    sin_t = np.sin(-theta)
+    
+    # Fórmula de rotación
+    x_src = (x_shifted * cos_t) - (y_shifted * sin_t) + cx
+    y_src = (x_shifted * sin_t) + (y_shifted * cos_t) + cy
+    
+    return interpolacion_bilineal_vectorizada(img, x_src, y_src)
 
 # --- 2c. Traslación ---
 def traslacion(img, tx, ty):
-    """ Traslada la imagen tx píxeles a la derecha y ty abajo. """
     h, w = img.shape
+    M = np.float32([[1, 0, tx], [0, 1, ty]])
     new_img = np.zeros((h, w), dtype=np.uint8)
     
-    # Calculamos los límites de recorte para no salirnos del array
-    # Lógica: new_img[y, x] = img[y-ty, x-tx]
+    # Cálculo manual de límites para slicing (mucho más rápido que loop)
+    dst_y_start = max(0, ty)
+    dst_y_end   = min(h, h + ty)
+    dst_x_start = max(0, tx)
+    dst_x_end   = min(w, w + tx)
     
-    # Definimos coordenadas de pegado
-    dst_y1 = max(0, ty)
-    dst_y2 = min(h, h + ty)
-    dst_x1 = max(0, tx)
-    dst_x2 = min(w, w + tx)
+    src_y_start = max(0, -ty)
+    src_y_end   = min(h, h - ty)
+    src_x_start = max(0, -tx)
+    src_x_end   = min(w, w - tx)
     
-    # Definimos coordenadas de copiado (origen)
-    src_y1 = max(0, -ty)
-    src_y2 = min(h, h - ty)
-    src_x1 = max(0, -tx)
-    src_x2 = min(w, w - tx)
-    
-    # Copiamos el bloque (vectorizado)
-    # Verificamos que las dimensiones coincidan antes de copiar
-    if (dst_y2 > dst_y1) and (dst_x2 > dst_x1):
-        new_img[dst_y1:dst_y2, dst_x1:dst_x2] = img[src_y1:src_y2, src_x1:src_x2]
-        
+    # Verificamos si hay superposición válida
+    if (dst_y_end > dst_y_start) and (dst_x_end > dst_x_start):
+        new_img[dst_y_start:dst_y_end, dst_x_start:dst_x_end] = \
+            img[src_y_start:src_y_end, src_x_start:src_x_end]
+            
     return new_img
 
-# --- 2d. Escalamiento ---
-def escalamiento(img, s):
-    """ Escala la imagen por el factor s usando interpolación bilineal. """
+# --- 2d. Escalamiento con Interpolación ---
+def escalamiento(img, scale):
     h, w = img.shape
-    new_h = int(h * s)
-    new_w = int(w * s)
+    new_h, new_w = int(h * scale), int(w * scale)
     
-    # 1. Crear grid de coordenadas de la imagen DESTINO
-    y_grid, x_grid = np.meshgrid(np.arange(new_h), np.arange(new_w), indexing='ij')
+    # Malla de coordenadas destino
+    y_idxs, x_idxs = np.indices((new_h, new_w))
     
-    # 2. Mapeo Inverso: x_src = x_dst / sx
-    x_src = x_grid / s
-    y_src = y_grid / s
+    # Mapeo Inverso: src = dst / scale
+    x_src = x_idxs / scale
+    y_src = y_idxs / scale
+    
+    # Nota: Clampeamos coordenadas para interpolar con la imagen original
+    return interpolacion_bilineal_vectorizada(img, x_src, y_src)
 
-    # 3. Interpolación
-    return aplicar_interpolacion_bilineal(img, x_src, y_src)
+# --- 2e. Borrado Aleatorio (Random Erase) ---
+def random_erase(img, p=0.5, sl=0.02, sh=0.4, r1=0.3):
+    """
+    Implementación basada en Zhong et al.
+    sl, sh: Proporción mínima y máxima del área a borrar.
+    r1: Relación de aspecto.
+    """
+    if random.random() > p: return img # Probabilidad de no aplicar
+    
+    h, w = img.shape
+    area = h * w
+    
+    for _ in range(100):
+        target_area = random.uniform(sl, sh) * area
+        aspect_ratio = random.uniform(r1, 1/r1)
+        
+        h_erase = int(round(math.sqrt(target_area * aspect_ratio)))
+        w_erase = int(round(math.sqrt(target_area / aspect_ratio)))
+        
+        if w_erase < w and h_erase < h:
+            x1 = random.randint(0, w - w_erase)
+            y1 = random.randint(0, h - h_erase)
+            
+            new_img = img.copy()
+            # Rellenar con ruido aleatorio (0-255)
+            noise = np.random.randint(0, 255, (h_erase, w_erase), dtype=np.uint8)
+            new_img[y1:y1+h_erase, x1:x1+w_erase] = noise
+            return new_img
+            
+    return img
+
+# --- 2f. CutMix ---
+def cutmix(img_dest, img_src, beta=1.0):
+    """
+    Implementación basada en Yun et al.
+    Recorta un parche de img_src y lo pega en img_dest.
+    """
+    h, w = img_dest.shape
+    # Redimensionamos la fuente al tamaño del destino usando nuestra función
+    # (Para simplificar, usamos interpolación de vecino más cercano si difieren mucho,
+    # o simplemente cortamos si es manual estricto. Aquí asumimos recorte o reajuste simple)
+    if img_src.shape != img_dest.shape:
+        # Ajuste simple de recorte/relleno para coincidir dimensiones
+        h_src, w_src = img_src.shape
+        temp = np.zeros((h, w), dtype=np.uint8)
+        min_h, min_w = min(h, h_src), min(w, w_src)
+        temp[:min_h, :min_w] = img_src[:min_h, :min_w]
+        img_src = temp
+
+    # Generar Lambda de distribución Beta
+    lam = np.random.beta(beta, beta)
+    
+    # Coordenadas del Bounding Box
+    cut_rat = np.sqrt(1. - lam)
+    cut_w = int(w * cut_rat)
+    cut_h = int(h * cut_rat)
+    
+    cx = np.random.randint(w)
+    cy = np.random.randint(h)
+    
+    bbx1 = np.clip(cx - cut_w // 2, 0, w)
+    bby1 = np.clip(cy - cut_h // 2, 0, h)
+    bbx2 = np.clip(cx + cut_w // 2, 0, w)
+    bby2 = np.clip(cy + cut_h // 2, 0, h)
+    
+    new_img = img_dest.copy()
+    new_img[bby1:bby2, bbx1:bbx2] = img_src[bby1:bby2, bbx1:bbx2]
+    
+    return new_img

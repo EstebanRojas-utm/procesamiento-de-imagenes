@@ -1,67 +1,84 @@
 import cv2
 import os
-import funciones as fun
+import glob
 import random
+import funciones as fun
 
 # --- Configuración ---
 input_folder = 'imagenes'
 output_base = 'resultados_procesamiento'
 
-# Definimos subcarpetas para cada técnica
+# Subcarpetas
 carpetas = {
-    'gris': '01_EscalaGris',
-    'flip': '02_Volteado_Horizontal',
-    'rot':  '03_Rotacion_45_Grados',
-    'tras': '04_Traslacion',
-    'esc':  '05_Escalamiento'
+    'gris':   '01_EscalaGris',
+    'flip':   '02_Volteado_Horizontal',
+    'rot':    '03_Rotacion',
+    'tras':   '04_Traslacion',
+    'esc':    '05_Escalamiento',
+    'erase':  '06_Random_Erase',
+    'cutmix': '07_CutMix'
 }
 
-# Crear estructura de carpetas
+# Crear carpetas
+if not os.path.exists(output_base): os.makedirs(output_base)
 for k, nombre in carpetas.items():
     path = os.path.join(output_base, nombre)
-    if not os.path.exists(path):
-        os.makedirs(path)
+    if not os.path.exists(path): os.makedirs(path)
 
-# --- Bucle de Procesamiento ---
-# Procesaremos las imágenes (asegúrate de tener imagen1.jpg a imagen10.jpg)
-for i in range(1, 11):
-    filename = f"imagen{i}.jpg"
-    input_path = os.path.join(input_folder, filename)
+# Obtener imágenes
+tipos = ('*.jpg', '*.png', '*.jpeg')
+lista_imagenes = []
+for ext in tipos:
+    lista_imagenes.extend(glob.glob(os.path.join(input_folder, ext)))
+
+if not lista_imagenes:
+    print(f"Error: No se encontraron imágenes en '{input_folder}'")
+    exit()
+
+print(f"Procesando {len(lista_imagenes)} imágenes...")
+
+for img_path in lista_imagenes:
+    filename = os.path.basename(img_path)
     
     # 1. Cargar imagen original
-    img_original = cv2.imread(input_path)
+    img_original = cv2.imread(img_path)
+    if img_original is None: continue
+
+    # 2. Escala de Grises (Fundamental para el resto)
+    img_gris = fun.manual_rgb_a_gris(img_original)
+    cv2.imwrite(os.path.join(output_base, carpetas['gris'], filename), img_gris)
     
-    if img_original is not None:
-        print(f"[{i}/10] Procesando {filename}...")
-        
-        # --- A. Paso a Escala de Grises (Base para lo demás) ---
-        img_gris = fun.manual_rgb_a_gris(img_original)
-        cv2.imwrite(os.path.join(output_base, carpetas['gris'], filename), img_gris)
-        
-        # --- B. Volteado (Flipping) ---
-        # Ejemplo: Horizontal
-        img_flip = fun.volteado(img_gris, modo='h')
-        cv2.imwrite(os.path.join(output_base, carpetas['flip'], filename), img_flip)
-        
-        # --- C. Rotación ---
-        # Ejemplo: Rotar theta grados
-        img_rot = fun.rotacion(img_gris, angulo_grados=random.randint(-360,360))
-        cv2.imwrite(os.path.join(output_base, carpetas['rot'], filename), img_rot)
-        
-        # --- D. Traslación ---
-        # Ejemplo: Mover m px a la derecha y n px abajo
-        img_tras = fun.traslacion(img_gris, tx=random.randint(-200, 200), ty=random.randint(-200, 200))
-        cv2.imwrite(os.path.join(output_base, carpetas['tras'], filename), img_tras)
-        
-        # --- E. Escalamiento ---
-        
-        # Ejemplo: agrandar o reducir la imagen
-        factor_scale=random.uniform(0.5, 1.5)
-        img_esc = fun.escalamiento(img_gris, s=factor_scale)
-        cv2.imwrite(os.path.join(output_base, carpetas['esc'], filename), img_esc)
+    # 3. Augmentations
+    
+    # a. Volteado Horizontal
+    img_flip = fun.volteado(img_gris, modo='h')
+    cv2.imwrite(os.path.join(output_base, carpetas['flip'], filename), img_flip)
+    
+    # b. Rotación (ej. entre -45 y 45 grados)
+    img_rot = fun.rotacion(img_gris, random.randint(-45, 45))
+    cv2.imwrite(os.path.join(output_base, carpetas['rot'], filename), img_rot)
+    
+    # c. Traslación
+    tx, ty = random.randint(-44, 44), random.randint(-44, 44)
+    img_tras = fun.traslacion(img_gris, tx, ty)
+    cv2.imwrite(os.path.join(output_base, carpetas['tras'], filename), img_tras)
+    
+    # d. Escalamiento (Zoom in/out)
+    scale = random.uniform(0.1, 1.9)
+    img_esc = fun.escalamiento(img_gris, scale)
+    cv2.imwrite(os.path.join(output_base, carpetas['esc'], filename), img_esc)
+    
+    # e. Random Erase 
+    img_erase = fun.random_erase(img_gris, p=1.0) 
+    cv2.imwrite(os.path.join(output_base, carpetas['erase'], filename), img_erase)
+    
+    # f. CutMix
+    if len(lista_imagenes) > 1:
+        partner = random.choice(lista_imagenes)
+        img_partner = cv2.imread(partner)
+        if img_partner is not None:
+            img_partner_gris = fun.manual_rgb_a_gris(img_partner)
+            img_cutmix = fun.cutmix(img_gris, img_partner_gris)
+            cv2.imwrite(os.path.join(output_base, carpetas['cutmix'], filename), img_cutmix)
 
-
-    else:
-        print(f"Error: No se encontró {input_path}")
-
-print("\n¡Proceso finalizado! Revisa la carpeta 'resultados_procesamiento'.")
+print("¡Proceso finalizado exitosamente!")
