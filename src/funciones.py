@@ -1,8 +1,13 @@
 import numpy as np
 import math
 import random
+import cv2
 
 # --- 1. Transformación a Escala de Grises ---
+def escalaGris(image):
+    if len(image.shape) < 3: return image
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
 def manual_rgb_a_gris(image):
     """
     Convierte RGB a Grises.
@@ -44,6 +49,8 @@ def interpolacion_bilineal_vectorizada(img, x_map, y_map):
     Ic = img[y0, x1] # Top-right
     Id = img[y1, x1] # Bottom-right
     
+    print("Ia: ",Ia,"Ib: ",Ib)
+    
     # Calculamos pesos (distancias)
     # wa es el peso para Ia, que depende de la distancia al opuesto (Id)
     wa = (x1 - x_map) * (y1 - y_map)
@@ -72,7 +79,7 @@ def rotacion(img, angulo_grados):
     
     # Creamos una malla de coordenadas de la imagen DESTINO
     y_idxs, x_idxs = np.indices((h, w))
-    
+
     # Centramos coordenadas
     x_shifted = x_idxs - cx
     y_shifted = y_idxs - cy

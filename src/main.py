@@ -5,8 +5,8 @@ import random
 import funciones as fun
 
 # --- Configuración ---
-input_folder = 'imagenes'
-output_base = 'resultados_procesamiento'
+input_folder = 'imagenes/fuego_con_humo_gris'
+output_base = 'resultados_procesamiento_humoGris'
 
 # Subcarpetas
 carpetas = {
@@ -45,7 +45,7 @@ for img_path in lista_imagenes:
     if img_original is None: continue
 
     # 2. Escala de Grises (Fundamental para el resto)
-    img_gris = fun.manual_rgb_a_gris(img_original)
+    img_gris = fun.escalaGris(img_original)
     cv2.imwrite(os.path.join(output_base, carpetas['gris'], filename), img_gris)
     
     # 3. Augmentations
